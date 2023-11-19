@@ -1,12 +1,17 @@
+import random
+import smtplib
+import string
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
+import datetime
 # from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
 # $env:FLASK_APP = "app"
 # $env:FLASK_ENV = "development"
+# $env:FLASK_DEBUG = "1"
 
 # Database configuration with MySQL
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:password@127.0.0.1:3306/onlinefoodordering'
@@ -23,6 +28,8 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)  
     email = db.Column(db.String(255), unique=True, nullable=False)
     role = db.Column(db.Enum('customer', 'restaurant', 'admin'), nullable=False)
+    reset_code = db.Column(db.String(255), nullable=True)
+    reset_code_expiry = db.Column(db.DateTime, nullable=True)
 
 # Customer Model
 class Customer(db.Model):
@@ -45,6 +52,7 @@ class MenuItem(db.Model):
     price = db.Column(db.Float, nullable=False)
     description = db.Column(db.Text)
     restaurantId = db.Column(db.Integer, db.ForeignKey('Restaurant.restaurantId'))
+    status = db.Column(db.Enum('active', 'deleted'), default='active', nullable=False)
 
 # Order Model
 class Order(db.Model):
@@ -209,7 +217,6 @@ def update_customer(user_id):
     user.email = data['email']
     user.password = data['password']
     
-
     # Update Customer details
     customer = Customer.query.get(user_id)
     if customer:
@@ -219,6 +226,7 @@ def update_customer(user_id):
     db.session.commit()
     return jsonify({'message': 'Customer updated successfully.'}), 200
 
+# manage restaurant
 @app.route('/api/restaurants/<int:user_id>', methods=['PUT'])
 def update_restaurant(user_id):
     data = request.get_json()
@@ -239,8 +247,6 @@ def update_restaurant(user_id):
 
     db.session.commit()
     return jsonify({'message': 'Restaurant updated successfully.'}), 200
-
-
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
@@ -275,9 +281,10 @@ def view_restaurants():
         res_lis.append(r_details)
     return jsonify(res_lis)
 
+# view menu
 @app.route('/api/restaurants/<int:restaurant_id>/menu', methods=['GET'])
 def view_menu(restaurant_id):
-    menu_items = MenuItem.query.filter_by(restaurantId=restaurant_id).all()
+    menu_items = MenuItem.query.filter_by(restaurantId=restaurant_id, status='active').all()
     return jsonify([{'itemId': item.itemId, 'name': item.name, 'price': item.price, 'description' : item.description} for item in menu_items])
 
 @app.route('/api/customers/<int:customerId>/cart', methods=['POST'])
@@ -294,6 +301,318 @@ def add_item_to_cart(customerId):
     db.session.add(cart_item)
     db.session.commit()
     return jsonify({'message': 'Item added to cart'}), 201
+
+# view cart
+@app.route('/api/customers/<int:customerId>/cart', methods=['GET'])
+def view_cart(customerId):
+    cart = Cart.query.filter_by(custId=customerId).first()
+    if cart:
+        cart_items = CartItem.query.filter_by(cartId=cart.cartId).all()
+        items_details = []
+    for item in cart_items:
+        menu_item = MenuItem.query.get(item.itemId)
+        if menu_item:
+            item_detail = {
+                'itemId': item.itemId,
+                'name': menu_item.name,
+                'price': menu_item.price,
+                'description': menu_item.description,
+                'quantity': item.quantity
+            }
+            items_details.append(item_detail)
+        return jsonify({'cartContents': items_details}), 200
+    else:
+        return jsonify({'message': 'Cart not found'}), 404
+
+# update cart
+@app.route('/api/customers/<int:customerId>/cart/items/<int:itemId>', methods=['PUT'])
+def update_cart_item(customerId, itemId):
+    data = request.get_json()
+    cart = Cart.query.filter_by(custId=customerId).first()
+    if not cart:
+        return jsonify({'message': 'Cart not found'}), 404
+
+    cart_item = CartItem.query.filter_by(cartId=cart.cartId, itemId=itemId).first()
+    if cart_item:
+        cart_item.quantity = data['quantity']
+        db.session.commit()
+        return jsonify({'message': 'Cart item updated'}), 200
+    else:
+        return jsonify({'message': 'Cart item not found'}), 404
+
+# delete cart item
+@app.route('/api/customers/<int:customerId>/cart/items/<int:itemId>', methods=['DELETE'])
+def delete_cart_item(customerId, itemId):
+    cust_cart = Cart.query.filter_by(custId=customerId).first()
+    cart_item = CartItem.query.filter_by(cartId=cust_cart.cartId, itemId=itemId).first()
+    if cart_item:
+        db.session.delete(cart_item)
+        db.session.commit()
+        return jsonify({'message': 'Cart item deleted'}), 200
+    return jsonify({'message': 'Cart item not found'}), 404
+
+# checkout
+@app.route('/api/customers/<int:customerId>/checkout', methods=['POST'])
+def checkout(customerId):
+    data = request.get_json()
+    # Fetch cart details first
+    cart_details = Cart.query.filter_by(custId = customerId).first()
+    # Fetch cart items
+    cart_items = CartItem.query.filter_by(cartId=cart_details.cartId).all()
+    if not cart_items:
+        return jsonify({'message': 'Cart is empty'}), 400
+
+    # Create an order
+    new_order = Order(custId=customerId, status='placed', total=0 )  # Calculate total based on cart items
+    db.session.add(new_order)
+    db.session.flush()  # Flush to get the order ID without committing the transaction
+
+    # Move items from cart to order and calculate total
+    total = 0
+    for item in cart_items:
+        order_item = OrderItem(orderId=new_order.orderId, itemId=item.itemId, quantity=item.quantity)
+        db.session.add(order_item)
+        menu_item = MenuItem.query.filter_by(itemId=item.itemId).first()
+        new_order.restaurantId = menu_item.restaurantId
+        total += menu_item.price * item.quantity  # Assuming item has a price attribute
+
+    new_order.total = total
+
+    # Record the payment
+    payment = Payment(orderId=new_order.orderId, total=total, status='completed', mode='credit_card', cardDetails = data['paymentMode'])
+    db.session.add(payment)
+
+    # Clear the cart
+    for item in cart_items:
+        db.session.delete(item)
+    db.session.delete(cart_details)
+    db.session.commit()
+    return jsonify({'message': 'Checkout successful', 'orderId': new_order.orderId}), 201
+
+# view orders
+@app.route('/api/customers/<int:customerId>/orders', methods=['GET'])
+def view_orders(customerId):
+    orders = Order.query.filter_by(custId=customerId).all()
+    orders_details = [{'orderId': order.orderId, 'restaurant_id' : order.restaurantId, 'status': order.status, 'total': order.total, 'Date' : order.date} for order in orders]
+    return jsonify(orders_details), 200
+
+# manage order - update order status
+@app.route('/api/orders/<int:orderId>/status', methods=['PUT'])
+def update_order_status(orderId):
+    data = request.get_json()
+    order = Order.query.get(orderId)
+    if not order:
+        return jsonify({'message': 'Order not found.'}), 404
+        
+    order.status = data['status']
+    db.session.commit()
+    return jsonify({'message': 'Order status updated successfully.'}), 200
+
+# add review
+@app.route('/api/orders/<int:orderId>/review', methods=['POST'])
+def review_order(orderId):
+    data = request.get_json()
+    # Check if the order exists
+    order = Order.query.get(orderId)
+    if not order:
+        return jsonify({'message': 'Order not found.'}), 404
+
+    # Check if a review already exists for this order
+    existing_review = Review.query.filter_by(orderId=orderId).first()
+    if existing_review:
+        return jsonify({'message': 'Review already exists for this order.'}), 400
+
+    # Create a new review
+    new_review = Review(
+        orderId=orderId,
+        content=data['content'],
+        rating=data['rating']
+    )
+    db.session.add(new_review)
+    db.session.commit()
+
+    return jsonify({'message': 'Review submitted successfully.'}), 201
+
+# manage review
+@app.route('/api/reviews/<int:reviewId>', methods=['PUT', 'DELETE'])
+def manage_review(reviewId):
+    review = Review.query.get(reviewId)
+
+    if not review:
+        return jsonify({'message': 'Review not found.'}), 404
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        review.content = data.get('content', review.content)
+        review.rating = data.get('rating', review.rating)
+        db.session.commit()
+        return jsonify({'message': 'Review updated successfully.'}), 200
+
+    elif request.method == 'DELETE':
+        db.session.delete(review)
+        db.session.commit()
+        return jsonify({'message': 'Review deleted successfully.'}), 200
+
+# manage customer profile
+@app.route('/api/customers/<int:customerId>/profile', methods=['PUT', 'DELETE'])
+def manage_customer_profile(customerId):
+    customer = Customer.query.get(customerId)
+    user = User.query.get(customer.userId) if customer else None
+
+    if not customer or not user:
+        return jsonify({'message': 'Customer not found.'}), 404
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        user.username = data.get('username', user.username)
+        user.email = data.get('email', user.email)
+        customer.address = data.get('address', customer.address)
+        customer.paymentDetails = data.get('paymentDetails', customer.paymentDetails)
+        db.session.commit()
+        return jsonify({'message': 'Customer profile updated successfully.'}), 200
+
+    elif request.method == 'DELETE':
+        db.session.delete(customer)
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'message': 'Customer profile deleted successfully.'}), 200
+
+# RESTAURANT BASED OPERAITONS
+# add menu item
+@app.route('/api/restaurants/<int:restaurantId>/menu', methods=['POST'])
+def add_menu_item(restaurantId):
+    data = request.get_json()
+    new_item = MenuItem(
+        name=data['name'],
+        price=data['price'],
+        description=data['description'],
+        restaurantId=restaurantId
+    )
+    db.session.add(new_item)
+    db.session.commit()
+    return jsonify({'message': 'Menu item added successfully', 'itemId': new_item.itemId}), 201
+
+# manage Menu
+@app.route('/api/menuitems/<int:itemId>', methods=['PUT', 'DELETE'])
+def manage_menu_item(itemId):
+    menu_item = MenuItem.query.get(itemId)
+
+    if not menu_item:
+        return jsonify({'message': 'Menu item not found.'}), 404
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        menu_item.name = data.get('name', menu_item.name)
+        menu_item.price = data.get('price', menu_item.price)
+        menu_item.description = data.get('description', menu_item.description)
+        db.session.commit()
+        return jsonify({'message': 'Menu item updated successfully.'}), 200
+
+    elif request.method == 'DELETE':
+        menu_item = MenuItem.query.get(itemId)
+        if menu_item:
+            menu_item.status = 'deleted'
+            db.session.commit()
+            return jsonify({'message': 'Menu item marked as deleted'}), 200
+        else:
+            return jsonify({'message': 'Menu item not found'}), 404
+
+# view orders - for restaurant
+@app.route('/api/restaurants/<int:restaurantId>/orders', methods=['GET'])
+def view_received_orders(restaurantId):
+    orders = Order.query.filter(
+        Order.restaurantId == restaurantId, 
+        Order.status != 'delivered'
+    ).order_by(Order.date.asc()).all()
+
+    order_details = [{
+        'orderId': order.orderId, 
+        'customerId': order.custId, 
+        'status': order.status, 
+        'date': order.date
+    } for order in orders]
+
+    return jsonify(order_details), 200
+
+# ADMIN BASED OPERATIONS
+# view users
+@app.route('/api/admin/users', methods=['GET'])
+def view_all_users():
+    data = request.get_json()
+    hide_payment = data['isCustomer']
+    users = User.query.filter(User.role == 'customer').all()
+    user_details = []
+
+    for user in users:
+        user_info = {
+            'userId': user.userId,
+            'username': user.username,
+            'email': user.email,
+            'role': user.role
+        }
+
+        if user.role == 'customer':
+            customer = Customer.query.get(user.userId)
+            user_info['address'] = customer.address if customer else ''
+            user_info['paymentDetails'] = customer.paymentDetails if customer and not hide_payment else ''
+
+
+        user_details.append(user_info)
+
+    return jsonify(user_details), 200
+
+# Forgot password
+@app.route('/api/users/forgot-password', methods=['POST'])
+def forgot_password():
+    data = request.get_json()
+    user = User.query.filter_by(email=data['email']).first()
+    if user:
+        # Generate a random reset code
+        reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        user.reset_code = reset_code
+        user.reset_code_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        db.session.commit()
+
+        # Logic to send email to user's email address
+        send_reset_email(user.email, reset_code)
+
+        return jsonify({'message': 'If the email is registered, a reset code has been sent.'}), 200
+    return jsonify({'message': 'If the email is registered, a reset code has been sent.'}), 200
+
+def send_reset_email(email, code):
+    sender_email = "your_email@example.com"
+    receiver_email = email
+    password = "your_email_password"  # Consider using environment variables for sensitive data
+
+    message = f"""\
+    Subject: Password Reset Code
+
+    Your password reset code is {code}."""
+
+    try:
+        server = smtplib.SMTP('smtp.example.com', 587)  # Use your SMTP server details
+        server.starttls()
+        server.login(sender_email, password)
+        server.sendmail(sender_email, receiver_email, message)
+    except Exception as e:
+        return jsonify({'message': 'Failed to send email.', 'error': str(e)}), 500
+
+    return jsonify({'message': 'Password reset code sent to your email.'}), 200
+
+@app.route('/api/users/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json()
+    user = User.query.filter_by(reset_code=data['reset_code']).first()
+    if user and user.reset_code_expiry > datetime.datetime.utcnow():
+        # Hash new password and reset the reset_code fields
+        hashed_password = data['new_password']
+        user.password = hashed_password
+        user.reset_code = None
+        user.reset_code_expiry = None
+        db.session.commit()
+        return jsonify({'message': 'Password has been reset successfully.'}), 200
+    return jsonify({'message': 'Invalid or expired reset code.'}), 400
+
 
 
 if __name__ == '__main__':
