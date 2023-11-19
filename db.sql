@@ -1,4 +1,4 @@
--- create database OnlineFoodOrdering;
+create database OnlineFoodOrdering;
 -- Use your database
 USE OnlineFoodOrdering;
 
@@ -26,10 +26,10 @@ CREATE TABLE Customer (
 -- );
 
 -- Restaurants table
-CREATE TABLE Restaurants (
-    userId INT ,
+CREATE TABLE Restaurant (
+    restaurantId INT ,
     location VARCHAR(255) NOT NULL,
-    FOREIGN KEY (userId) REFERENCES User(userId)
+    FOREIGN KEY (restaurantId) REFERENCES User(userId)
 );
 
 -- MenuItems table
@@ -39,7 +39,7 @@ CREATE TABLE MenuItems (
     price DOUBLE NOT NULL,
     description TEXT,
     restaurantId INT, 
-    FOREIGN KEY (restaurantId) REFERENCES Restaurants(userId)
+    FOREIGN KEY (restaurantId) REFERENCES Restaurant(restaurantId)
 );
 
 -- Orders table
@@ -51,7 +51,7 @@ CREATE TABLE Orders (
     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     total DOUBLE NOT NULL,
     FOREIGN KEY (custId) REFERENCES Customer(userId),
-    FOREIGN KEY (restaurantId) REFERENCES Restaurants(userId)
+    FOREIGN KEY (restaurantId) REFERENCES Restaurant(restaurantId)
 );
 
 -- OrderItems table (to manage multiple items in a single order)
@@ -101,3 +101,7 @@ CREATE TABLE CartItems (
     FOREIGN KEY (cartId) REFERENCES Carts(cartId),
     FOREIGN KEY (itemId) REFERENCES MenuItems(itemId)
 );
+
+ALTER TABLE MenuItems ADD COLUMN status ENUM('active', 'deleted') NOT NULL DEFAULT 'active';
+	ALTER TABLE User ADD COLUMN reset_code VARCHAR(255);
+	ALTER TABLE User ADD COLUMN reset_code_expiry DATETIME;
