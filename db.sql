@@ -105,3 +105,4 @@ CREATE TABLE CartItems (
 ALTER TABLE MenuItems ADD COLUMN status ENUM('active', 'deleted') NOT NULL DEFAULT 'active';
 	ALTER TABLE User ADD COLUMN reset_code VARCHAR(255);
 	ALTER TABLE User ADD COLUMN reset_code_expiry DATETIME;
+    ALTER TABLE User ADD CONSTRAINT Unique_person UNIQUE (username,email);

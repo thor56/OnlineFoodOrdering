@@ -1,13 +1,16 @@
 import random
 import smtplib
 import string
-from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 import datetime
-# from werkzeug.security import generate_password_hash, check_password_hash
+from typing import Sequence
+from flask import Flask, render_template, request, flash, jsonify, session
+from flask_bootstrap import Bootstrap5
+ 
 
 app = Flask(__name__)
+bootstrap = Bootstrap5(app)
 app.config['DEBUG'] = True
 # $env:FLASK_APP = "app"
 # $env:FLASK_ENV = "development"
@@ -16,7 +19,7 @@ app.config['DEBUG'] = True
 # Database configuration with MySQL
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:password@127.0.0.1:3306/onlinefoodordering'
 # app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
+app.secret_key = 'secret string'
 # Initialize SQLAlchemy with the Flask app
 db = SQLAlchemy(app)
 
@@ -118,91 +121,60 @@ Cart.cart_items = db.relationship('CartItem', backref='cart')
 with app.app_context():
     db.create_all()
 
-
-@app.route('/')
-def index():
-    return 'Welcome to the Online Food Ordering System API!'
-
-
 # USER BASED OPERATIONS
 
 @app.route('/api/users/register', methods=['POST'])
 def register_user():
-    data = request.get_json()
-    # hashed_password = generate_password_hash(data['password'], method='sha256')
-    
+    # data = request.get_json()
     new_user = User(
-        username=data['username'],
-        email=data['email'],
-        password=data['password'],
-        role=data['role']
+        username=request.form['username'],
+        email=request.form['email'],
+        password= request.form['password'],
+        role=request.form['role']
     )
 
-    db.session.add(new_user)
-    db.session.commit()
-    
-    return jsonify({'message': 'User registered successfully.'}), 201
-
-@app.route('/api/customers', methods=['POST'])
-def create_customer():
-    data = request.get_json()
-
-    # Create User
-    # hashed_password = generate_password_hash(data['password'], method='sha256')
-    new_user = User(
-        username=data['username'],
-        email=data['email'],
-        password=data['password'],
-        role='customer'  
-    )
     db.session.add(new_user)
     db.session.flush()  # Flush to get the user ID without committing the transaction
 
-    # Create Customer with the new User ID
-    new_customer = Customer(
-        userId=new_user.userId,
-        address=data['address'],
-        paymentDetails=data['paymentDetails']  
-    )
-    db.session.add(new_customer)
-    db.session.commit()
+    if(request.form['role'] == 'customer'):
+        # Create Customer with the new User ID
+        new_customer = Customer(
+            userId=new_user.userId,
+            address=request.form['address'],
+            paymentDetails=request.form['paymentDetails']  
+        )
+        db.session.add(new_customer)
 
-    return jsonify({'message': 'New customer created successfully.'}), 201
-
-@app.route('/api/restaurants', methods=['POST'])
-def create_restaurant():
-    data = request.get_json()
-
-    # Create User
-    # hashed_password = generate_password_hash(data['password'], method='sha256')
-    new_user = User(
-        username=data['username'],
-        email=data['email'],
-        password=data['password'],
-        role='restaurant'  
-    )
-    db.session.add(new_user)
-    db.session.flush()  
-
+    elif(request.form['role'] == 'restaurant'):
     # Create Restaurant with the new User ID
-    new_restaurant = Restaurant(
-        restaurantId=new_user.userId,
-        location=data['location']
-    )
-    db.session.add(new_restaurant)
-    db.session.commit()
+        new_restaurant = Restaurant(
+            restaurantId=new_user.userId,
+            location=request.form['location']
+        )
+        db.session.add(new_restaurant)
 
-    return jsonify({'message': 'New restaurant created successfully.'}), 201
+    db.session.commit()
+    
+    return render_template('login.html', hasError = True,errorMessage = "User registered successfully! Please login")
+
+@app.route("/SignOut")
+def SignOut():
+    session['userid'] = ''
+    session['loggedIn'] = False
+    return render_template('login.html', hasError = True,errorMessage = "Logged out!")
 
 @app.route('/api/users/login', methods=['POST'])
 def login_user():
-    data = request.get_json()
-    user = User.query.filter_by(username=data['username']).first()
+    # data = request.form
+    user = User.query.filter_by(username=request.form['username']).first()
     
-    if not user or user.password != data['password']:
-        return jsonify({'message': 'Invalid username or password.'}), 401
-    
-    return jsonify({'message': 'Login successful.'}), 200
+    if not user or user.password != request.form['password']:
+        return render_template('login.html', hasError = True,errorMessage = "Invalid login details")
+    else:
+        session['userid'] = user.userId
+        session['loggedIn'] = True
+
+    return render_template('index.html')
 
 @app.route('/api/customers/<int:user_id>', methods=['PUT'])
 def update_customer(user_id):
@@ -612,6 +584,28 @@ def reset_password():
         db.session.commit()
         return jsonify({'message': 'Password has been reset successfully.'}), 200
     return jsonify({'message': 'Invalid or expired reset code.'}), 400
+
+
+# FRONTEND ------------------ APPLICATIONS
+
+@app.route("/")
+def home():
+    if session.__contains__("loggedIn") == False:
+        session['userid'] = ''
+        session['loggedIn'] = False
+    return render_template('index.html')
+
+# rendering login page
+@app.route("/login")
+def LoginPage():
+    return render_template('login.html', hasError = False)
+
+# sign up page
+@app.route("/register")
+def SignUpPage():
+    return render_template('signup.html')
+
+
 
 
 

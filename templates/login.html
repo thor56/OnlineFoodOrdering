@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+    {% if hasError %}
+        <div class="container messageToShow" >
+        <p>{{ errorMessage }}</p>
+        </div>
+    {% endif %}
+      <form action="{{ url_for('login_user')}}" method="post">
+          <h5>Login</h5>
+            <div>
+                <input type="text" name="username" placeholder="Enter Username">
+            </div>
+            <div>
+                <input type="password" name="password" placeholder="Enter Password">
+            </div>
+          <div>
+              <button>Login</button>
+          </div>
+      </form>
+{% endblock %}
