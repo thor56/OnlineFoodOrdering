@@ -3,4 +3,21 @@
 
 {% block content %}
 
+    <h2>Available Restaurants</h2>
+    <table class="table table-hover">
+        <thead class="thead">
+            <tr> 
+                <th>Name</th>
+                <th>Location</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for restaurant in restaurants %}
+            <tr onclick="window.location.href='/api/restaurants/{{ restaurant.id }}/menu'">
+                <td>{{ restaurant.name }}</td>
+                <td>{{ restaurant.location }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 {% endblock %}

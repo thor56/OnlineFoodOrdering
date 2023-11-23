@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 import datetime
 from typing import Sequence
-from flask import Flask, render_template, request, flash, jsonify, session
+from flask import Flask, make_response, render_template, request, flash, jsonify, session
 from flask_bootstrap import Bootstrap5
  
 
@@ -171,9 +171,9 @@ def login_user():
     if not user or user.password != request.form['password']:
         return render_template('login.html', hasError = True,errorMessage = "Invalid login details")
     else:
+        print("entered")
         session['userid'] = user.userId
         session['loggedIn'] = True
-
     return render_template('index.html')
 
 @app.route('/api/customers/<int:user_id>', methods=['PUT'])
@@ -251,28 +251,78 @@ def view_restaurants():
             'location' : r.location
         }
         res_lis.append(r_details)
-    return jsonify(res_lis)
+    return res_lis
 
 # view menu
 @app.route('/api/restaurants/<int:restaurant_id>/menu', methods=['GET'])
 def view_menu(restaurant_id):
     menu_items = MenuItem.query.filter_by(restaurantId=restaurant_id, status='active').all()
-    return jsonify([{'itemId': item.itemId, 'name': item.name, 'price': item.price, 'description' : item.description} for item in menu_items])
+    cart_items = {}
+    ext_restaurant_id = None
+    has_cart = False
+    
 
-@app.route('/api/customers/<int:customerId>/cart', methods=['POST'])
-def add_item_to_cart(customerId):
-    data = request.get_json()
-    cart = Cart()
-    cart.custId = customerId
-    db.session.add(cart)
-    db.session.flush() 
-    cart_item = CartItem()
-    cart_item.cartId = cart.cartId
-    cart_item.itemId = data['itemId']
-    cart_item.quantity = data['quantity']
+    if 'loggedIn' in session and session['loggedIn'] == True :
+        user_id = session['userid']
+        cart_id = Cart.query.filter_by(custId = user_id).first().cartId
+        if cart_id is not None:
+            has_cart = True
+            temp_id = 0
+            for item in CartItem.query.filter_by(cartId = cart_id):
+                cart_items[item.itemId] = item
+                temp_id = item.itemId
+            ext_restaurant_id = MenuItem.query.filter_by(itemId = temp_id).first().restaurantId
+
+    same_rest = restaurant_id == ext_restaurant_id
+    return render_template('viewMenu.html', menu = menu_items, cart_items = cart_items, has_cart = has_cart, same_rest = same_rest)
+
+# @app.route('/api/restaurants/<int:restaurant_id>/menu', methods=['GET'])
+# def view_menu(restaurant_id):
+#     menu_items = MenuItem.query.filter_by(restaurantId=restaurant_id, status='active').all()
+#     user_cart = []
+#     clear_cart_warning = False
+
+#     if 'loggedIn' in session and session['loggedIn']:
+#         user_id = session['userid']
+#         user_cart = CartItem.query.filter_by(userId=user_id).all()
+
+#         # Check if cart items are from a different restaurant
+#         if user_cart and user_cart[0].menuItem.restaurantId != restaurant_id:
+#             clear_cart_warning = True
+
+#     # Prepare menu items data including cart quantity
+#     menu_data = []
+#     for item in menu_items:
+#         cart_quantity = next((cart_item.quantity for cart_item in user_cart if cart_item.itemId == item.id), 0)
+#         menu_data.append({**item.serialize(), 'cart_quantity': cart_quantity})
+
+#     return render_template('viewMenu.html', menu=menu_data, clear_cart_warning=clear_cart_warning)
+
+
+@app.route('/api/customers/<int:customerId>/<int:itemId>/<int:qty>/cart', methods=['GET'])
+def add_item_to_cart(customerId, itemId, qty):
+    # data = request.get_json()
+    cart = Cart.query.filter_by(custId = customerId).first()
+    if(cart is None):
+        cart = Cart()
+        cart.custId = customerId
+        db.session.add(cart)
+        db.session.flush() 
+    cart_item = CartItem.query.filter_by(itemId = itemId, cartId = cart.cartId).first()
+    if(cart_item is None):
+        cart_item = CartItem()
+        cart_item.cartId = cart.cartId
+        cart_item.itemId = itemId
+        cart_item.quantity = 1
+    else :
+        if qty == 0:
+            qty = -1
+        cart_item.quantity = cart_item.quantity + qty
+
+    
     db.session.add(cart_item)
     db.session.commit()
-    return jsonify({'message': 'Item added to cart'}), 201
+    return make_response('', 204)
 
 # view cart
 @app.route('/api/customers/<int:customerId>/cart', methods=['GET'])
@@ -593,7 +643,8 @@ def home():
     if session.__contains__("loggedIn") == False:
         session['userid'] = ''
         session['loggedIn'] = False
-    return render_template('index.html')
+    restaurants = view_restaurants()
+    return render_template('index.html', restaurants = restaurants)
 
 # rendering login page
 @app.route("/login")
