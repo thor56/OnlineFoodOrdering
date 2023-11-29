@@ -358,7 +358,7 @@ def view_cart():
         for item in cart_items:
             menu_item = MenuItem.query.get(item.itemId)
             if menu_item:
-                total += menu_item.price
+                total += menu_item.price * item.quantity
                 item_detail = {
                     'itemId': item.itemId,
                     'name': menu_item.name,
@@ -735,7 +735,7 @@ def submit_user_update(user_id):
     # Save the changes
     db.session.commit()
     flash('Profile updated successfully', 'success')
-    return redirect(url_for('user_profile', user_id=user_id))
+    return redirect(url_for('user_profile', userId=user_id))
 
 
 

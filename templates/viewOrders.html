@@ -30,9 +30,9 @@
                     <td>
                         <div class="text-right">
                         {% if order.status == 'placed' %}
-                        <button class="btn btn-danger" onclick="window.location.href='/api/orders/{{order.orderId}}/cancelled/'">cancel</button>
+                        <button class="btn btn-danger" onclick="clicked('{{order.orderId}}')">cancel</button>
                         {% else %}
-                        <button class="btn btn-danger" disabled onclick="window.location.href='/api/orders/{{order.orderId}}/cancelled/'">cancel</button>
+                        <button class="btn btn-danger" disabled >cancel</button>
                         {% endif %}
                         <button class="btn btn-info"  onclick="window.location.href='/review/{{order.orderId}}'">review</button>
 
@@ -43,4 +43,32 @@
             </tbody>
         </table>
     {% endif %}
+
+    <script>
+        
+
+         function clicked(orderId) {
+
+        fetch('/api/orders/' , {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ orderId: orderId, status: 'cancelled' })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Success:', data);
+            alert('Order status updated successfully');
+            // Handle successful response
+            window.location.href = '/restaurant-orders/' + res_id;
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+            alert('Failed to update order status');
+            // Handle error response
+        });
+    };
+    </script>
 {% endblock %}
