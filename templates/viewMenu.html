@@ -4,13 +4,16 @@
 {% block content %}
 
     <h2>Menu</h2>
+    {% if session['role'] == 'restaurant' %}
+        <button class="btn btn-dark" onclick="window.location.href='/addMenu'">Add Menu Item</button>
+    {% endif %}
     <table class="table table-hover">
         <thead class="thead">
             <tr> 
                 <th>Name</th>
                 <th>Description</th>
                 <th>Price</th>
-                <th>Your cart</th>
+                <th>Action</th>
             </tr>
         </thead>
         {% if same_rest == False %}
@@ -18,6 +21,7 @@
             Adding items from this restaurant will clear your existing cart from another restaurant.
         </div>
     {% endif %}
+    
         <tbody>
             {% for item in menu %}
             <tr >
@@ -26,6 +30,7 @@
                 <td>${{ item.price }}</td>
                 {% if session['loggedIn'] == true %}
                 {% set userId = session['userid'] %}
+                {% if session['role'] =='customer' %}
                 {% set cartItem = cart_items.get(item.itemId, "") %}
                 <td id="cart-controls-{{ item.itemId }}">
                     {%-  if cartItem == ""  -%}
@@ -40,7 +45,13 @@
                         <button class="btn btn-success" onclick="window.location.href='/api/customers/{{userId}}/{{item.itemId}}/1/cart'">add to cart</button>
                         {% endif %}
                 </td>
-                    {%- endif -%}
+                {% endif  %}
+                {% elif session['role'] =='restaurant' %}
+                <td>
+                    <button type="button" id="updateMenu" onclick="window.location.href='/updateMenu/{{item.itemId}}'"  class="btn btn-primary">Update</button>
+                    <button type="button" id="deleteMenu" onclick="window.location.href='/deleteMenu/{{item.itemId}}'" class="btn btn-danger">Delete</button>
+                </td>
+                {%- endif -%}
                 {% else %}
                     <td><button disabled>Login to Add to cart</button></td>
                 {% endif %}
@@ -48,36 +59,38 @@
             {% endfor %}
         </tbody>
     </table>
+    
     <script>
-        function updateQuantityAndRedirect(change, itemId, userId) {
-            var qtyInput = document.getElementById(itemId + '-qty');
-            console.log(qtyInput);
-            var newQty = change;
-            if(qtyInput != null){
-            newQty = parseInt(qtyInput.value) + change;
-            }
-            // Ensure quantity does not go below zero
-            newQty = newQty < 0 ? 0 : newQty;
+        document.getElementById('addMenuItemForm').onsubmit = function(event) {
+            event.preventDefault();
+
+            var itemName = document.getElementById('itemName').value;
+            var itemPrice = document.getElementById('itemPrice').value;
+            var itemDescription = document.getElementById('itemDescription').value;
+
+            var itemId = {itemId}; // Make sure to pass this from your Flask route
+
+            fetch('/api/menuitems/{{itemId}}', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: itemName,
+                    price: itemPrice,
+                    description: itemDescription
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+                alert('Menu item updated successfully!');
+                // Redirect or update UI as necessary
+            })
+        }
             
-            // Redirect to the API endpoint
-            window.location.href = `/api/customers/${userId}/${itemId}/${change > 0 ? 1 : 0}/cart`;
-
-            if (newQty > 0) {
-            controlsHtml = `
-                        <button class="btn btn-danger" onclick="updateQuantityAndRedirect(-1, '${itemId}', '${userId}')">-</button>
-                        <input type="number"  class="qty-number" name="qty-number" min="0" id="${itemId}-qty" value="${newQty}">
-                        <button class="btn btn-primary" onclick="updateQuantityAndRedirect(1, '${itemId}', '${userId}')">+</button>
-
-                `;
-        } else {
-            controlsHtml = `
-            <button class="btn btn-success" onclick="updateQuantityAndRedirect(1, '${itemId}', '${userId}')">add to cart</button>
-           `;
-        }
-        document.getElementById('cart-controls-' + itemId).innerHTML = controlsHtml;
-
-        }
     </script>
+
     
 {% endblock %}
 

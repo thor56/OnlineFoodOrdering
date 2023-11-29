@@ -25,6 +25,31 @@
             <a class="nav-link" href="{{ url_for('SignUpPage') }}">SignUp</a>
           </li>
           {% else %}
+            {% if session['role'] == 'customer' %}
+            <li class="nav-item active">
+              <a class="nav-link" href="{{ url_for('view_orders') }}">My Orders</a>
+            </li>
+            <li class="nav-item active">
+              <a class="nav-link" href="{{ url_for('view_cart') }}">View Cart</a>
+            </li>
+            
+            {% elif session['role'] == 'restaurant' %}
+            <li class="nav-item active">
+              <a class="nav-link" href="/restaurant-orders/{{session['userid']}}">My Orders</a>
+            </li>
+            <li class="nav-item active">
+              <a class="nav-link" href="/api/restaurants/{{session['userid']}}/menu">My Menu</a>
+            </li>
+            {% elif session['role'] == 'admin' %}
+            <li class="nav-item active">
+              <a class="nav-link" href="/api/admin/users">All Users</a>
+            </li>
+            
+            {% endif %}
+
+            <li class="nav-item active">
+              <a class="nav-link" href="/user-profile/{{session['userid']}}">My Profile</a>
+            </li>
           <li class="nav-item active">
             <a class="nav-link" href="{{ url_for('SignOut') }}">Sign Out</a>
           </li>

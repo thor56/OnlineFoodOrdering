@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Add Review for Order #{{ orderId }}</h2>
+
+    <form id="reviewForm">
+        <div class="mb-3">
+            <label for="reviewContent" class="form-label">Review Content</label>
+            <textarea class="form-control" id="reviewContent" name="content" required></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="reviewRating" class="form-label">Rating</label>
+            <select class="form-control" id="reviewRating" name="rating" required>
+                <option value="">Select a rating</option>
+                <option value="1">1 - Poor</option>
+                <option value="2">2 - Fair</option>
+                <option value="3">3 - Good</option>
+                <option value="4">4 - Very Good</option>
+                <option value="5">5 - Excellent</option>
+            </select>
+        </div>
+        {% if old_rev %}
+        <button type="button" id="updateReview" class="btn btn-primary">Update Review</button>
+        <button type="button" id="deleteReview" class="btn btn-danger">Delete Review</button>
+        {% else %}
+        <button type="submit" class="btn btn-primary">Submit Review</button>
+        {% endif %}
+    </form>
+
+    <script>
+        document.getElementById('reviewForm').onsubmit = function(event) {
+            event.preventDefault();
+            submitOrUpdateReview('POST', '/api/orders/{{orderId}}/review');
+        };
+
+        
+        document.getElementById('updateReview').onclick = function() {
+            submitOrUpdateReview('PUT', '/api/reviews/{{orderId}}');
+        };
+    
+        document.getElementById('deleteReview').onclick = function() {
+            if (confirm('Are you sure you want to delete this review?')) {
+                submitOrUpdateReview('DELETE', '/api/reviews/{{ orderId }}', true);
+            }
+        };
+       
+
+        function submitOrUpdateReview(method, url, isDelete = false) {
+            var content = document.getElementById('reviewContent').value;
+            var rating = document.getElementById('reviewRating').value;
+
+            var requestOptions = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            if (!isDelete) {
+                requestOptions.body = JSON.stringify({ content: content, rating: rating });
+            }
+
+            fetch(url, requestOptions);
+        }
+    </script>
+{% endblock %}

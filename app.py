@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 import datetime
 from typing import Sequence
-from flask import Flask, make_response, render_template, request, flash, jsonify, session
+from flask import Flask, make_response, redirect, render_template, request, flash, jsonify, session, url_for
 from flask_bootstrap import Bootstrap5
  
 
@@ -33,6 +33,7 @@ class User(db.Model):
     role = db.Column(db.Enum('customer', 'restaurant', 'admin'), nullable=False)
     reset_code = db.Column(db.String(255), nullable=True)
     reset_code_expiry = db.Column(db.DateTime, nullable=True)
+    active = db.Column(db.Integer)
 
 # Customer Model
 class Customer(db.Model):
@@ -46,6 +47,7 @@ class Restaurant(db.Model):
     __tablename__ = 'Restaurant'
     restaurantId = db.Column(db.Integer, db.ForeignKey('User.userId'), primary_key=True)
     location = db.Column(db.String(255), nullable=False)
+    RestaurantName = db.Column(db.String(255), nullable=False)
 
 # MenuItem Model
 class MenuItem(db.Model):
@@ -130,7 +132,8 @@ def register_user():
         username=request.form['username'],
         email=request.form['email'],
         password= request.form['password'],
-        role=request.form['role']
+        role=request.form['role'],
+        active = 1
     )
 
     db.session.add(new_user)
@@ -144,6 +147,11 @@ def register_user():
             paymentDetails=request.form['paymentDetails']  
         )
         db.session.add(new_customer)
+        # db.session.flush() 
+        # cart = Cart()
+        # cart.custId = new_customer.userId
+        # db.session.add(cart)
+        # db.session.flush() 
 
     elif(request.form['role'] == 'restaurant'):
     # Create Restaurant with the new User ID
@@ -174,6 +182,7 @@ def login_user():
         print("entered")
         session['userid'] = user.userId
         session['loggedIn'] = True
+        session['role'] = user.role
     return render_template('index.html')
 
 @app.route('/api/customers/<int:user_id>', methods=['PUT'])
@@ -197,7 +206,7 @@ def update_customer(user_id):
 
     db.session.commit()
     return jsonify({'message': 'Customer updated successfully.'}), 200
-
+ 
 # manage restaurant
 @app.route('/api/restaurants/<int:user_id>', methods=['PUT'])
 def update_restaurant(user_id):
@@ -220,28 +229,28 @@ def update_restaurant(user_id):
     db.session.commit()
     return jsonify({'message': 'Restaurant updated successfully.'}), 200
 
-@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@app.route('/api/users/<int:user_id>', methods=['GET'])
 def delete_user(user_id):
     user = User.query.get(user_id)
     
     if not user:
         return jsonify({'message': 'No user found.'}), 404
     
-    if user.role == 'customer':
-        cust = Customer.query.get(user_id)
-        db.session.delete(cust)
-    elif user.role == 'restaurant':
-        rest_ = Restaurant.query.get(user_id)
-        db.session.delete(rest_)
-
-    db.session.delete(user)
+    # if user.role == 'customer':
+    #     cust = Customer.query.get(user_id)
+    #     db.session.delete(cust)
+    # elif user.role == 'restaurant':
+    #     rest_ = Restaurant.query.get(user_id)
+    #     db.session.delete(rest_)
+    user.active = 0
+    # db.session.delete(user)
     db.session.commit()
-    return jsonify({'message': 'User deleted successfully.'}), 200
+    return redirect(url_for('SignOut',method='GET'))
 
 # CUSTOMER BASED OPERATIONS
 @app.route('/api/restaurants', methods=['GET'])
 def view_restaurants():
-    restaurants = Restaurant.query.all()
+    restaurants = Restaurant.query.filter_by().all()
     res_lis = []
     for r in restaurants:
         user = User.query.get(r.restaurantId)
@@ -250,7 +259,8 @@ def view_restaurants():
             'name' : user.username,
             'location' : r.location
         }
-        res_lis.append(r_details)
+        if(user.active == 1):
+            res_lis.append(r_details)
     return res_lis
 
 # view menu
@@ -264,39 +274,29 @@ def view_menu(restaurant_id):
 
     if 'loggedIn' in session and session['loggedIn'] == True :
         user_id = session['userid']
-        cart_id = Cart.query.filter_by(custId = user_id).first().cartId
-        if cart_id is not None:
-            has_cart = True
-            temp_id = 0
-            for item in CartItem.query.filter_by(cartId = cart_id):
-                cart_items[item.itemId] = item
-                temp_id = item.itemId
-            ext_restaurant_id = MenuItem.query.filter_by(itemId = temp_id).first().restaurantId
-
-    same_rest = restaurant_id == ext_restaurant_id
+        cart_ = Cart.query.filter_by(custId = user_id).first()
+        if cart_ is not None:
+            cart_id = cart_.cartId
+            if cart_id is not None:
+                has_cart = True
+                temp_id = 0
+                cart_items_2 = CartItem.query.filter_by(cartId = cart_id).all()
+                if cart_items_2 is not None:
+                    for item in cart_items_2:
+                        cart_items[item.itemId] = item
+                        temp_id = item.itemId
+                    m_item = MenuItem.query.filter_by(itemId = temp_id).first()
+                    if m_item is not None:
+                        ext_restaurant_id = m_item.restaurantId
+    if ext_restaurant_id is not None:
+        same_rest = restaurant_id == ext_restaurant_id
+    else :
+        same_rest = True
+    if(not type(cart_items) == type({})):
+        cart_items = {}
     return render_template('viewMenu.html', menu = menu_items, cart_items = cart_items, has_cart = has_cart, same_rest = same_rest)
 
-# @app.route('/api/restaurants/<int:restaurant_id>/menu', methods=['GET'])
-# def view_menu(restaurant_id):
-#     menu_items = MenuItem.query.filter_by(restaurantId=restaurant_id, status='active').all()
-#     user_cart = []
-#     clear_cart_warning = False
 
-#     if 'loggedIn' in session and session['loggedIn']:
-#         user_id = session['userid']
-#         user_cart = CartItem.query.filter_by(userId=user_id).all()
-
-#         # Check if cart items are from a different restaurant
-#         if user_cart and user_cart[0].menuItem.restaurantId != restaurant_id:
-#             clear_cart_warning = True
-
-#     # Prepare menu items data including cart quantity
-#     menu_data = []
-#     for item in menu_items:
-#         cart_quantity = next((cart_item.quantity for cart_item in user_cart if cart_item.itemId == item.id), 0)
-#         menu_data.append({**item.serialize(), 'cart_quantity': cart_quantity})
-
-#     return render_template('viewMenu.html', menu=menu_data, clear_cart_warning=clear_cart_warning)
 
 
 @app.route('/api/customers/<int:customerId>/<int:itemId>/<int:qty>/cart', methods=['GET'])
@@ -315,36 +315,60 @@ def add_item_to_cart(customerId, itemId, qty):
         cart_item.itemId = itemId
         cart_item.quantity = 1
     else :
+        
         if qty == 0:
             qty = -1
         cart_item.quantity = cart_item.quantity + qty
-
+        if(cart_item.quantity == 0):
+            db.session.delete(cart_item)
+            db.session.commit()
+            return make_response('', 204)
     
+    current_item = MenuItem.query.get(itemId)
+    if not current_item:
+        return make_response('Item not found', 404)
+
+    current_restaurant_id = current_item.restaurantId
+    # Check if there are items in the cart from a different restaurant
+    cart_items = CartItem.query.join(MenuItem).filter(
+        CartItem.cartId == cart.cartId,
+        MenuItem.restaurantId != current_restaurant_id
+    ).all()
+
+    if cart_items:
+        # Remove all items from a different restaurant
+        for item in cart_items:
+            db.session.delete(item)
+
+
     db.session.add(cart_item)
     db.session.commit()
     return make_response('', 204)
 
 # view cart
-@app.route('/api/customers/<int:customerId>/cart', methods=['GET'])
-def view_cart(customerId):
-    cart = Cart.query.filter_by(custId=customerId).first()
+@app.route('/api/customers/cart', methods=['GET'])
+def view_cart():
+    cart = Cart.query.filter_by(custId=session['userid']).first()
+    items_details = []
+    total = 0
     if cart:
         cart_items = CartItem.query.filter_by(cartId=cart.cartId).all()
-        items_details = []
-    for item in cart_items:
-        menu_item = MenuItem.query.get(item.itemId)
-        if menu_item:
-            item_detail = {
-                'itemId': item.itemId,
-                'name': menu_item.name,
-                'price': menu_item.price,
-                'description': menu_item.description,
-                'quantity': item.quantity
-            }
-            items_details.append(item_detail)
-        return jsonify({'cartContents': items_details}), 200
-    else:
-        return jsonify({'message': 'Cart not found'}), 404
+        
+        
+        for item in cart_items:
+            menu_item = MenuItem.query.get(item.itemId)
+            if menu_item:
+                total += menu_item.price
+                item_detail = {
+                    'itemId': item.itemId,
+                    'name': menu_item.name,
+                    'price': menu_item.price,
+                    'description': menu_item.description,
+                    'quantity': item.quantity
+                }
+                items_details.append(item_detail)
+
+    return render_template('viewCart.html', cartContents = items_details, cart_total = total, custId=session['userid'])
 
 # update cart
 @app.route('/api/customers/<int:customerId>/cart/items/<int:itemId>', methods=['PUT'])
@@ -374,11 +398,11 @@ def delete_cart_item(customerId, itemId):
     return jsonify({'message': 'Cart item not found'}), 404
 
 # checkout
-@app.route('/api/customers/<int:customerId>/checkout', methods=['POST'])
+@app.route('/api/customers/<int:customerId>/checkout', methods=['GET'])
 def checkout(customerId):
-    data = request.get_json()
     # Fetch cart details first
     cart_details = Cart.query.filter_by(custId = customerId).first()
+    customer_details = Customer.query.filter_by(userId= customerId).first()
     # Fetch cart items
     cart_items = CartItem.query.filter_by(cartId=cart_details.cartId).all()
     if not cart_items:
@@ -401,7 +425,7 @@ def checkout(customerId):
     new_order.total = total
 
     # Record the payment
-    payment = Payment(orderId=new_order.orderId, total=total, status='completed', mode='credit_card', cardDetails = data['paymentMode'])
+    payment = Payment(orderId=new_order.orderId, total=total, status='completed', mode='credit_card', cardDetails = customer_details.paymentDetails)
     db.session.add(payment)
 
     # Clear the cart
@@ -409,26 +433,62 @@ def checkout(customerId):
         db.session.delete(item)
     db.session.delete(cart_details)
     db.session.commit()
-    return jsonify({'message': 'Checkout successful', 'orderId': new_order.orderId}), 201
+    return redirect(url_for('view_orders'))
 
-# view orders
-@app.route('/api/customers/<int:customerId>/orders', methods=['GET'])
-def view_orders(customerId):
+# # view orders
+# @app.route('/api/customers/<int:customerId>/orders', methods=['GET'])
+# def view_orders(customerId):
+#     orders = Order.query.filter_by(custId=customerId).all()
+#     orders_details = [{'orderId': order.orderId, 'restaurant_id' : order.restaurantId, 'status': order.status, 'total': order.total, 'Date' : order.date} for order in orders]
+#     return jsonify(orders_details), 200
+
+@app.route('/api/customers/orders', methods=['GET'])
+def view_orders():
+    order_details = []
+    customerId = session['userid']
     orders = Order.query.filter_by(custId=customerId).all()
-    orders_details = [{'orderId': order.orderId, 'restaurant_id' : order.restaurantId, 'status': order.status, 'total': order.total, 'Date' : order.date} for order in orders]
-    return jsonify(orders_details), 200
+    for order in orders:
+        rest_id = order.restaurantId
+        rest_details = Restaurant.query.filter_by(restaurantId = rest_id).first()
+        o_detail = {
+            'orderId': order.orderId,
+            'restaurantName': rest_details.RestaurantName,  # Assuming 'name' is a field in User model
+            'restaurantLocation': rest_details.location,  # Assuming 'location' is a field in User model
+            'status': order.status,
+            'total': order.total,
+            'Date': order.date
+        }
+        order_details.append(o_detail)
+    
+    return render_template('viewOrders.html', orders = order_details)
+
+
 
 # manage order - update order status
-@app.route('/api/orders/<int:orderId>/status', methods=['PUT'])
-def update_order_status(orderId):
-    data = request.get_json()
+@app.route('/api/orders/', methods=['POST'])
+def update_order_status():
+    data =  request.get_json() 
+    orderId = int(data['orderId'])
+    status = data['status']
+
     order = Order.query.get(orderId)
     if not order:
         return jsonify({'message': 'Order not found.'}), 404
         
-    order.status = data['status']
+    order.status = status
     db.session.commit()
-    return jsonify({'message': 'Order status updated successfully.'}), 200
+    return  jsonify({'message': 'Order status updated successfully.'}), 200
+
+
+# rendering review page
+@app.route("/review/<int:orderId>")
+def ReviewPage(orderId):
+       # Check if a review already exists for this order
+    old_rev = False
+    existing_review = Review.query.filter_by(orderId=orderId).first()
+    if existing_review:
+        old_rev = True
+    return render_template('addReview.html', orderId = orderId, old_rev = old_rev)
 
 # add review
 @app.route('/api/orders/<int:orderId>/review', methods=['POST'])
@@ -438,12 +498,7 @@ def review_order(orderId):
     order = Order.query.get(orderId)
     if not order:
         return jsonify({'message': 'Order not found.'}), 404
-
-    # Check if a review already exists for this order
-    existing_review = Review.query.filter_by(orderId=orderId).first()
-    if existing_review:
-        return jsonify({'message': 'Review already exists for this order.'}), 400
-
+    
     # Create a new review
     new_review = Review(
         orderId=orderId,
@@ -453,12 +508,13 @@ def review_order(orderId):
     db.session.add(new_review)
     db.session.commit()
 
-    return jsonify({'message': 'Review submitted successfully.'}), 201
+    request.method = 'GET'
+    return redirect(url_for('view_orders'))
 
 # manage review
-@app.route('/api/reviews/<int:reviewId>', methods=['PUT', 'DELETE'])
-def manage_review(reviewId):
-    review = Review.query.get(reviewId)
+@app.route('/api/reviews/<int:orderId>', methods=['PUT', 'DELETE'])
+def manage_review(orderId):
+    review = Review.query.filter_by(orderId = orderId).first()
 
     if not review:
         return jsonify({'message': 'Review not found.'}), 404
@@ -468,12 +524,14 @@ def manage_review(reviewId):
         review.content = data.get('content', review.content)
         review.rating = data.get('rating', review.rating)
         db.session.commit()
-        return jsonify({'message': 'Review updated successfully.'}), 200
+        message = 'Review upadted successfully'
 
     elif request.method == 'DELETE':
         db.session.delete(review)
         db.session.commit()
-        return jsonify({'message': 'Review deleted successfully.'}), 200
+        message = 'review deleted successfully'
+
+    return redirect(url_for('view_orders'))
 
 # manage customer profile
 @app.route('/api/customers/<int:customerId>/profile', methods=['PUT', 'DELETE'])
@@ -500,15 +558,30 @@ def manage_customer_profile(customerId):
         return jsonify({'message': 'Customer profile deleted successfully.'}), 200
 
 # RESTAURANT BASED OPERAITONS
+
+# rendering login page
+@app.route("/updateMenu/<int:itemId>")
+def updateMenu(itemId):
+    return render_template('updateMenu.html',itemId = itemId )
+
+@app.route("/addMenu")
+def addMenu():
+    return render_template('addMenu.html' )
+
 # add menu item
-@app.route('/api/restaurants/<int:restaurantId>/menu', methods=['POST'])
-def add_menu_item(restaurantId):
+@app.route('/api/restaurants/menu', methods=['POST'])
+def add_menu_item():
     data = request.get_json()
+    # new_item = MenuItem()
+    # new_item.name = data['name']
+    # new_item.price = data['price']
+    # new_item.description = data['description']
+    # new_item.restaurantId = session['userid']
     new_item = MenuItem(
         name=data['name'],
         price=data['price'],
         description=data['description'],
-        restaurantId=restaurantId
+        restaurantId = session['userid']
     )
     db.session.add(new_item)
     db.session.commit()
@@ -539,6 +612,17 @@ def manage_menu_item(itemId):
         else:
             return jsonify({'message': 'Menu item not found'}), 404
 
+# delete menu
+@app.route('/deleteMenu/<int:itemId>', methods=['GET'])
+def delete_menu_item(itemId):
+    menu_item = MenuItem.query.get(itemId)
+    if menu_item:
+        menu_item.status = 'deleted'
+        db.session.commit()
+        return jsonify({'message': 'Menu item marked as deleted'}), 200
+    else:
+        return jsonify({'message': 'Menu item not found'}), 404
+
 # view orders - for restaurant
 @app.route('/api/restaurants/<int:restaurantId>/orders', methods=['GET'])
 def view_received_orders(restaurantId):
@@ -560,9 +644,7 @@ def view_received_orders(restaurantId):
 # view users
 @app.route('/api/admin/users', methods=['GET'])
 def view_all_users():
-    data = request.get_json()
-    hide_payment = data['isCustomer']
-    users = User.query.filter(User.role == 'customer').all()
+    users = User.query.all()
     user_details = []
 
     for user in users:
@@ -573,15 +655,89 @@ def view_all_users():
             'role': user.role
         }
 
-        if user.role == 'customer':
-            customer = Customer.query.get(user.userId)
-            user_info['address'] = customer.address if customer else ''
-            user_info['paymentDetails'] = customer.paymentDetails if customer and not hide_payment else ''
-
-
+        
         user_details.append(user_info)
 
-    return jsonify(user_details), 200
+    return render_template('viewUsers.html', users=user_details)
+
+
+@app.route('/user-profile/<int:userId>')
+def user_profile(userId):
+    user_id  = userId
+    user = User.query.get(user_id)
+    if not user:
+        return 'User not found', 404
+
+    profile_data = None
+    if user.role == 'customer':
+        profile_data = Customer.query.filter_by(userId=user_id).first()
+    elif user.role == 'restaurant':
+        profile_data = Restaurant.query.filter_by(restaurantId=user_id).first()
+
+    return render_template('userProfile.html', user=user, profile_data=profile_data)
+
+@app.route('/update-user-profile/<int:user_id>')
+def update_user_profile(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return 'User not found', 404
+
+    # Ensure the current user is authorized to update this profile
+    # ...
+
+    if user.role == 'customer':
+        customer = Customer.query.filter_by(userId=user_id).first()
+        return render_template('updateUserProfile.html', user=user, customer=customer)
+    elif user.role == 'restaurant':
+        restaurant = Restaurant.query.filter_by(restaurantId=user_id).first()
+        return render_template('updateUserProfile.html', user=user, restaurant=restaurant)
+    else:
+        # Handle other user roles or errors
+        return 'Invalid user role', 400
+
+
+
+
+@app.route('/submit-user-update/<int:user_id>', methods=['POST'])
+def submit_user_update(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        flash('User not found', 'error')
+        return redirect(url_for('home'))
+
+    # Update common user fields
+    user.username = request.form['username']
+    user.email = request.form['email']
+    user.password = request.form['password']
+    # Include additional common fields if any
+
+    if user.role == 'customer':
+        # Assuming you have a one-to-one relationship between User and Customer
+        customer = Customer.query.filter_by(userId=user_id).first()
+        if customer:
+            customer.address = request.form['address']
+            customer.paymentDetails = request.form.get('paymentDetails')  # Optional field
+            # Include additional customer-specific fields if any
+        else:
+            flash('Customer profile not found', 'error')
+            return redirect(url_for('home'))
+
+    elif user.role == 'restaurant':
+        # Assuming you have a one-to-one relationship between User and Restaurant
+        restaurant = Restaurant.query.filter_by(restaurantId=user_id).first()
+        if restaurant:
+            restaurant.location = request.form['location']
+            # Include additional restaurant-specific fields if any
+        else:
+            flash('Restaurant profile not found', 'error')
+            return redirect(url_for('home'))
+
+    # Save the changes
+    db.session.commit()
+    flash('Profile updated successfully', 'success')
+    return redirect(url_for('user_profile', user_id=user_id))
+
+
 
 # Forgot password
 @app.route('/api/users/forgot-password', methods=['POST'])
@@ -634,6 +790,18 @@ def reset_password():
         db.session.commit()
         return jsonify({'message': 'Password has been reset successfully.'}), 200
     return jsonify({'message': 'Invalid or expired reset code.'}), 400
+
+
+@app.route('/restaurant-orders/<int:restaurant_id>')
+def restaurant_orders(restaurant_id):
+    orders = Order.query.filter_by(restaurantId=restaurant_id).all()
+
+    return render_template('restaurantOrders.html', orders=orders, restaurant_id=restaurant_id)
+
+@app.route('/manageOrder/<int:orderId>', methods=['POST','GET'])
+def viewManageRestaurant(orderId):
+    order = Order.query.filter_by(orderId = orderId).first()
+    return render_template('manageOrder.html', order=order)
 
 
 # FRONTEND ------------------ APPLICATIONS

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Your Orders</h2>
+
+    {% if orders|length == 0 %}
+        <p>No orders found.</p>
+    {% else %}
+        <table class="table table-hover">
+            <thead class="thead">
+                <tr>
+                    <th>Order ID</th>
+                    <th>Restaurant Name</th>
+                    <th>Restaurant Location</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td>{{ order.orderId }}</td>
+                    <td>{{ order.restaurantName }}</td>
+                    <td>{{ order.restaurantLocation }}</td>
+                    <td>{{ order.status }}</td>
+                    <td>${{ order.total }}</td>
+                    <td>{{ order.Date.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <div class="text-right">
+                        {% if order.status == 'placed' %}
+                        <button class="btn btn-danger" onclick="window.location.href='/api/orders/{{order.orderId}}/cancelled/'">cancel</button>
+                        {% else %}
+                        <button class="btn btn-danger" disabled onclick="window.location.href='/api/orders/{{order.orderId}}/cancelled/'">cancel</button>
+                        {% endif %}
+                        <button class="btn btn-info"  onclick="window.location.href='/review/{{order.orderId}}'">review</button>
+
+                    </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}

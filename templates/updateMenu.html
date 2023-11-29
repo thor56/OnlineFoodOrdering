@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Update Menu Item</h2>
+
+    <form id="addMenuItemForm">
+        <div class="mb-3">
+            <label for="itemName" class="form-label">Item Name</label>
+            <input type="text" class="form-control" id="itemName" name="itemName" required>
+        </div>
+        <div class="mb-3">
+            <label for="itemPrice" class="form-label">Price</label>
+            <input type="number" class="form-control" id="itemPrice" name="itemPrice" step="0.01" required>
+        </div>
+        <div class="mb-3">
+            <label for="itemDescription" class="form-label">Description</label>
+            <textarea class="form-control" id="itemDescription" name="itemDescription"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Item</button>
+    </form>
+
+    <script>
+        document.getElementById('addMenuItemForm').onsubmit = function(event) {
+            event.preventDefault();
+
+            var itemName = document.getElementById('itemName').value;
+            var itemPrice = document.getElementById('itemPrice').value;
+            var itemDescription = document.getElementById('itemDescription').value;
+
+            var itemId = {itemId}; // Make sure to pass this from your Flask route
+
+            fetch('/api/menuitems/{{itemId}}', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: itemName,
+                    price: itemPrice,
+                    description: itemDescription
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+                alert('Menu item updated successfully!');
+                // Redirect or update UI as necessary
+            })
+        }
+            
+    </script>
+{% endblock %}

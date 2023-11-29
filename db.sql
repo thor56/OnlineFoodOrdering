@@ -106,3 +106,5 @@ ALTER TABLE MenuItems ADD COLUMN status ENUM('active', 'deleted') NOT NULL DEFAU
 	ALTER TABLE User ADD COLUMN reset_code VARCHAR(255);
 	ALTER TABLE User ADD COLUMN reset_code_expiry DATETIME;
     ALTER TABLE User ADD CONSTRAINT Unique_person UNIQUE (username,email);
+    ALTER TABLE RESTAURANT add column RestaurantName  VARCHAR(100);
+    alter table user add column active INT default 1;
