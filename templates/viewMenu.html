@@ -61,61 +61,8 @@
     </table>
     
     <script>
-        // function updateQuantityAndRedirect(change, itemId, userId) {
-        //     var qtyInput = document.getElementById(itemId + '-qty');
-        //     console.log(qtyInput);
-        //     var newQty = change;
-        //     if(qtyInput != null){
-        //     newQty = parseInt(qtyInput.value) + change;
-        //     }
-        //     // Ensure quantity does not go below zero
-        //     newQty = newQty < 0 ? 0 : newQty;
 
-        //     // Redirect to the API endpoint
-        //     window.location.href = `/api/customers/${userId}/${itemId}/${change > 0 ? 1 : 0}/cart`;
-        //      document.getElementById('addMenuItemForm').onsubmit = function(event) {
-        //     event.preventDefault();
-
-            
-        //     if (newQty > 0) {
-        //     controlsHtml = `
-        //                 <button class="btn btn-danger" onclick="updateQuantityAndRedirect(-1, '${itemId}', '${userId}')">-</button>
-        //                 <input type="number"  class="qty-number" name="qty-number" min="0" id="${itemId}-qty" value="${newQty}">
-        //                 <button class="btn btn-primary" onclick="updateQuantityAndRedirect(1, '${itemId}', '${userId}')">+</button>
-        //     var itemName = document.getElementById('itemName').value;
-        //     var itemPrice = document.getElementById('itemPrice').value;
-        //     var itemDescription = document.getElementById('itemDescription').value;
-
-        //         `;
-        // } else {
-        //     controlsHtml = `
-        //     <button class="btn btn-success" onclick="updateQuantityAndRedirect(1, '${itemId}', '${userId}')">add to cart</button>
-        //    `;
-        // }
-        //     document.getElementById('cart-controls-' + itemId).innerHTML = controlsHtml;
-
-        //     var itemId = {itemId}; // Make sure to pass this from your Flask route
-
-        //     fetch('/api/menuitems/{{itemId}}', {
-        //         method: 'PUT',
-        //         headers: {
-        //             'Content-Type': 'application/json'
-        //         },
-        //         body: JSON.stringify({
-        //             name: itemName,
-        //             price: itemPrice,
-        //             description: itemDescription
-        //         })
-        //     })
-        //     .then(response => response.json())
-        //     .then(data => {
-        //         console.log('Success:', data);
-        //         alert('Menu item updated successfully!');
-        //         // Redirect or update UI as necessary
-        //     })
-        //      }}
-
-        function updateQuantityAndRedirect(change, itemId, userId) {
+    function updateQuantityAndRedirect(change, itemId, userId) {
     var qtyInput = document.getElementById(itemId + '-qty');
     var newQty = qtyInput ? parseInt(qtyInput.value) + change : 0;
     newQty = Math.max(newQty, 0); // Ensure quantity does not go below zero

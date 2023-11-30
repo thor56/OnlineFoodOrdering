@@ -179,11 +179,15 @@ def login_user():
     if not user or user.password != request.form['password']:
         return render_template('login.html', hasError = True,errorMessage = "Invalid login details")
     else:
-        print("entered")
         session['userid'] = user.userId
         session['loggedIn'] = True
         session['role'] = user.role
-    return render_template('index.html')
+        print(user.role)
+        if session['role'] == 'restaurant':
+            return redirect(url_for('restaurant_orders', restaurant_id=user.userId, method='GET'))
+        elif session['role'] == 'admin':
+            return redirect(url_for('view_all_users'))
+    return redirect(url_for('home')) 
 
 @app.route('/api/customers/<int:user_id>', methods=['PUT'])
 def update_customer(user_id):
